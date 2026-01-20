@@ -15,6 +15,7 @@ import net.minecraft.registry.Registries
 import net.minecraft.screen.GenericContainerScreenHandler
 import net.minecraft.screen.ScreenHandlerType
 import net.minecraft.screen.SimpleNamedScreenHandlerFactory
+import net.minecraft.screen.slot.SlotActionType
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.sound.SoundEvents
 import net.minecraft.stat.Stats
@@ -28,6 +29,10 @@ import java.util.UUID
 object CobbleKits : ModInitializer {
     private const val GUI_TITLE = "CobbleKits"
     private const val INVENTORY_SIZE = 27
+    private const val PLAYER_HEAD_SLOT = 4
+    private const val CLOSE_SLOT = 22
+    private val kitSlots = listOf(10, 12, 14, 16)
+
     private val claimedKits: MutableMap<UUID, MutableSet<String>> = mutableMapOf()
 
     private data class Kit(
@@ -88,9 +93,11 @@ object CobbleKits : ModInitializer {
             dispatcher.register(
                 net.minecraft.server.command.CommandManager.literal("kits").executes { context ->
                     val player = context.source.player
-                    player.openHandledScreen(SimpleNamedScreenHandlerFactory({ syncId, inventory, screenPlayer ->
-                        KitsScreenHandler(syncId, inventory, screenPlayer)
-                    }, Text.literal(GUI_TITLE)))
+                    player.openHandledScreen(
+                        SimpleNamedScreenHandlerFactory({ syncId, inventory, screenPlayer ->
+                            KitsScreenHandler(syncId, inventory, screenPlayer)
+                        }, Text.literal(GUI_TITLE)),
+                    )
                     1
                 },
             )
@@ -138,7 +145,7 @@ object CobbleKits : ModInitializer {
             Text.literal("Requis: ${kit.requiredHours}h").formatted(Formatting.DARK_GRAY),
         )
 
-        if (!claimed && hours < kit.requiredHours) {
+        if (!claimed && hours < kit.requiredHours && kit.requiredHours > 0) {
             val progress = MathHelper.clamp(hours / kit.requiredHours.toDouble(), 0.0, 1.0)
             val filled = (progress * 10).toInt()
             val bar = buildString {
@@ -178,10 +185,9 @@ object CobbleKits : ModInitializer {
         for (slot in 0 until INVENTORY_SIZE) {
             inventory.setStack(slot, background.copy())
         }
-        inventory.setStack(4, buildProfileStack(player, hours))
-        inventory.setStack(22, buildCloseStack())
+        inventory.setStack(PLAYER_HEAD_SLOT, buildProfileStack(player, hours))
+        inventory.setStack(CLOSE_SLOT, buildCloseStack())
 
-        val kitSlots = listOf(10, 12, 14, 16)
         kits.zip(kitSlots).forEach { (kit, slot) ->
             inventory.setStack(slot, buildKitStack(player, kit, hours))
         }
@@ -223,25 +229,24 @@ object CobbleKits : ModInitializer {
             }
         }
 
-        override fun onSlotClick(slotIndex: Int, button: Int, actionType: net.minecraft.screen.slot.SlotActionType, player: PlayerEntity) {
+        override fun onSlotClick(slotIndex: Int, button: Int, actionType: SlotActionType, player: PlayerEntity) {
             if (player !is ServerPlayerEntity) {
                 return
             }
-            if (slotIndex == 22) {
+            if (slotIndex == CobbleKits.CLOSE_SLOT) {
                 player.closeHandledScreen()
                 return
             }
-
-            val kitSlots = listOf(10, 12, 14, 16)
-            val kitIndex = kitSlots.indexOf(slotIndex)
+            val kitIndex = CobbleKits.kitSlots.indexOf(slotIndex)
             if (kitIndex >= 0) {
                 val kit = CobbleKits.kits[kitIndex]
                 CobbleKits.tryClaimKit(player, kit)
                 CobbleKits.fillInventory(player, inventory)
-                return
             }
         }
 
         override fun canUse(player: PlayerEntity): Boolean = true
+
+        override fun quickMove(player: PlayerEntity, slot: Int): ItemStack = ItemStack.EMPTY
     }
 }
